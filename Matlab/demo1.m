@@ -21,9 +21,9 @@ imageWidth = 512;
 shape = shapeFromShading(lights, imageLocation,imageExtension,...
     imageName, imageCount, imageHeight, imageWidth);
 figure(1); clf;
-mesh(Z);
+mesh(shape);
 
-figure(1); clf;
-surf(Z,'EdgeColor','none','FaceColor','red');
+figure(2); clf;
+surf(shape,'EdgeColor','none','FaceColor','red');
 camlight headlight;
 lighting phong;
