@@ -8,6 +8,9 @@ using OpenCvSharp;
 using OpenCvSharp.Blob;
 using System.Runtime.InteropServices;
 using OpenCvSharp.CPlusPlus;
+using System.Speech.Recognition;
+using La = MathNet.Numerics.LinearAlgebra;
+using Lad = MathNet.Numerics.LinearAlgebra.Double;
 
 namespace ShapeFromShading
 {
@@ -18,14 +21,6 @@ namespace ShapeFromShading
     {
         #region Public Properties
 
-        /// <summary>
-        /// Use grayscale images as input or not.
-        /// </summary>
-        public bool IsGrayScale { get; set; }
-        /// <summary>
-        /// Value of Guassian smooth.
-        /// </summary>
-        public int GaussianSmooth { get; set; }
         /// <summary>
         /// Set interval time of the main timer.
         /// </summary>
@@ -60,19 +55,12 @@ namespace ShapeFromShading
         private System.Windows.Forms.Timer mainTimer;
 
         private CvCapture capture;
-        private IplImage frame1;
-        private IplImage frame2;
-        private IplImage grayFrame1;
-        private IplImage grayFrame2;
-        private IplImage transformedFrame;
-        private CvWindow window1;
-        private CvWindow window2;
-        private CvWindow window3;
+        private IplImage cameraFrame;
+        private IplImage[] images;
+        private CvWindow cameraWindow;
+        private List<CvWindow> windows;
         private CvSize size;
-        private SIFT sift;
-        private SURF surf;
-        private BFMatcher bruteForceMatcher;
-        private FlannBasedMatcher flannBasedMatcher;
+        private bool isConstructing;
 
         #endregion
 
@@ -116,25 +104,21 @@ namespace ShapeFromShading
                 fpsTimer = null;
             }
 
-            if (window1 != null)
+            if (cameraWindow != null)
             {
-                window1.Close();
-                window1.Dispose();
-                window1 = null;
+                cameraWindow.Close();
+                cameraWindow.Dispose();
+                cameraWindow = null;
             }
 
-            if (window2 != null)
+            for (int i = 0; i < windows.Count; i++)
             {
-                window2.Close();
-                window2.Dispose();
-                window2 = null;
-            }
-
-            if (window3 != null)
-            {
-                window3.Close();
-                window3.Dispose();
-                window3 = null;
+                if (windows[i] != null)
+                {
+                    windows[i].Close();
+                    windows[i].Dispose();
+                    windows[i] = null;
+                }
             }
 
             if (capture != null)
@@ -147,7 +131,7 @@ namespace ShapeFromShading
         /// <summary>
         /// Start mainThread, that starts tracking
         /// </summary>
-        public void StartProcessing()
+        public void StartCamera()
         {
             mainTimer.Start();
             fpsTimer.Start();
@@ -157,7 +141,7 @@ namespace ShapeFromShading
         /// <summary>
         /// Stop mainThread, that stops tracking
         /// </summary>
-        public void StopProcessing()
+        public void StopCamera()
         {
             mainTimer.Stop();
             fpsTimer.Stop();
@@ -165,15 +149,147 @@ namespace ShapeFromShading
         }
 
         /// <summary>
-        /// Take snapshot and save it as camera 2.
+        /// Take snapshot and save it in the array according to the given index.
         /// </summary>
-        public void TakeSnapshot()
+        /// <param name="index"></param>
+        public void TakeSnapshot(int index)
         {
-            frame2 = capture.QueryFrame().Clone();
-            isReady = true;
+            if (isConstructing || index < 0 || index > 5)
+            {
+                return;
+            }
+
+            // create image if not created
+            IplImage image = images[index];
+            if (image == null)
+            {
+                image = new IplImage(size, BitDepth.U8, 1);
+                images[index] = image;
+            }
+
+            // capture new image, convert it to grayscale
+            // and set it to our image
+            Cv.CvtColor(capture.QueryFrame(), image, ColorConversion.BgrToGray);
+
+            // show it on the window
+            windows[index].Image = image;
         }
 
-        bool isReady = false;
+        /// <summary>
+        /// Start constructing the 3D image out of the taken snapshots.
+        /// </summary>
+        public void ConstructImage()
+        {
+            string location = @"D:\Education\MSc - Southampton\Semester 2\6206 Advanced Computer Vision\Coursework\Task 3\Matlab\Images";
+            for (int i = 0; i < 6; i++)
+            {
+                images[i].SaveImage(System.IO.Path.Combine(location, string.Format("image{0}.jpg", (i + 1))));
+            }
+
+            return;
+
+            Utils.DebugLine("Start ConstructImage");
+            isConstructing = true;
+
+            double[] light1 = new double[] { 0, 0, 40 };
+            double[] light2 = new double[] { 20, 5, 40 };
+            double[] light3 = new double[] { -5, 15, 40 };
+            double[] light4 = new double[] { -10, -10, 40 };
+            double[] light5 = new double[] { 5, -10, 40 };
+            double[] light6 = new double[] { 5, 20, 40 };
+
+            Lad.DenseVector l1 = Lad.DenseVector.OfArray(light1);
+            Lad.DenseVector l2 = Lad.DenseVector.OfArray(light2);
+            Lad.DenseVector l3 = Lad.DenseVector.OfArray(light3);
+            Lad.DenseVector l4 = Lad.DenseVector.OfArray(light4);
+            Lad.DenseVector l5 = Lad.DenseVector.OfArray(light5);
+            Lad.DenseVector l6 = Lad.DenseVector.OfArray(light6);
+
+            Lad.DenseVector[] lights = new Lad.DenseVector[] { l1, l2, l3, l4, l5, l6 };
+            for (int i = 0; i < 6; i++)
+            {
+                lights[i] = lights[i] / lights[i].Norm(2);
+            }
+
+            double[][] s = new double[6][];
+            for (int y = 0; y < 6; y++)
+            {
+                s[y] = lights[y].ToArray();
+            }
+            Lad.DenseMatrix _s = Lad.DenseMatrix.OfRowArrays(s);
+
+            double[][][] b = new double[240][][];
+            for (int y = 0; y < 240; y++)
+            {
+                b[y] = new double[320][];
+                for (int x = 0; x < 320; x++)
+                {
+                    b[y][x] = new double[3] { 1, 1, 1 };
+                }
+            }
+
+            double[][] p = new double[240][];
+            for (int y = 0; y < 240; y++)
+            {
+                p[y] = new double[320];
+                for (int x = 0; x < 320; x++)
+                {
+                    p[y][x] = 1;
+                }
+            }
+
+            double[][] q = (double[][])p.Clone();
+            double[][] z = (double[][])p.Clone();
+            double[] e = new double[6];
+            Lad.DenseMatrix _e;
+            Lad.DenseMatrix tb;
+            Lad.DenseMatrix _sInv;
+
+            for (int y = 0; y < 240; y++)
+            {
+                for (int x = 0; x < 320; x++)
+                {
+                    for (int i = 0; i < 6; i++)
+                    {
+                        e[i] = images[i][y, x].Val0;
+                    }
+                    _e = Lad.DenseMatrix.OfColumnArrays(new double[][] { e });
+                    _sInv = Lad.DenseMatrix.OfMatrix(_s.Inverse());
+                    tb = Lad.DenseMatrix.OfMatrix(((_sInv * _s).Inverse()) * _sInv * _e);
+
+                    //tb= (inv(S'*S))*S'*E;
+                }
+            }
+
+            //
+            //E=[img1(i,j) img2(i,j) img3(i,j) img4(i,j) img5(i,j) img6(i,j)];
+            //E=double(E');
+            //
+            //tb= (inv(S'*S))*S'*E;
+            //
+            //nbm = norm(tb);
+            //if( nbm == 0)
+            //    b(i,j,:) = 0; 
+            //else
+            //    b(i,j,:) = tb / nbm;
+            //end
+
+            //
+            //tM = [b(i,j,1) b(i,j,2) b(i,j,3)];
+            //nbm = norm(tM);
+            //if( nbm == 0)
+            //    tM = [0 0 0];
+            //else
+            //    tM = tM / nbm; 
+            //end        
+            //p(i,j)=tM(1,1);
+            //q(i,j)=tM(1,2);
+
+
+            //Lad.Matrix s = Lad.DenseMatrix.OfRowVectors(lights);
+            //Lad.Matrix b = Lad.DenseMatrix.OfArray() ;// .OfArray(new double[] { 240, 320, 3 });
+            //Lad.Vector p = Lad.DenseVector.OfArray(new double[] { 240, 320, 3 });            
+        }
 
         #endregion
 
@@ -205,7 +321,7 @@ namespace ShapeFromShading
         /// </summary>
         private void InitializeCamera()
         {
-            // Intialize camera
+            // intialize camera
             try
             {
                 capture = new CvCapture(CaptureDevice.Any, deviceID);
@@ -224,28 +340,38 @@ namespace ShapeFromShading
             capture.SetCaptureProperty(CaptureProperty.FrameWidth, size.Width);
             capture.SetCaptureProperty(CaptureProperty.FrameCount, 15);
 
-            frame1 = new IplImage(size, BitDepth.U8, 3);
-            frame2 = new IplImage(size, BitDepth.U8, 3);
-            grayFrame1 = new IplImage(size, BitDepth.U8, 1);
-            grayFrame2 = new IplImage(size, BitDepth.U8, 1);
-            transformedFrame = new IplImage(size, BitDepth.U8, 1);
-            sift = new SIFT();
-            surf = new SURF(500, 4, 2, true);
-            bruteForceMatcher = new BFMatcher(NormType.L2, false);
-            flannBasedMatcher = new FlannBasedMatcher();
+            images = new IplImage[6];
 
             // windows to view what's going on
-            window1 = new CvWindow("Camera 1", WindowMode.KeepRatio);
-            window1.Resize(size.Width, size.Height);
-            window1.Move(screenWidth - 17 - 2 * size.Width, 20);
+            cameraWindow = new CvWindow("Camera", WindowMode.KeepRatio);
+            cameraWindow.Resize(size.Width, size.Height);
+            cameraWindow.Move(screenWidth - 40 - 3 * size.Width, 20 + 0 * size.Height);
 
-            window2 = new CvWindow("Camera 2", WindowMode.KeepRatio);
-            window2.Resize(size.Width, size.Height);
-            window2.Move(screenWidth - 20 - 1 * size.Width, 20);
+            windows = new List<CvWindow>(6);
 
-            window3 = new CvWindow("Result", WindowMode.KeepRatio);
-            window3.Resize(size.Width * 2, size.Height);
-            window3.Move(screenWidth - 20 - 2 * size.Width, 20 + size.Height);
+            windows.Add(new CvWindow("Picture 1", WindowMode.KeepRatio));
+            windows[0].Resize(size.Width, size.Height);
+            windows[0].Move(screenWidth - 20 - 2 * size.Width, 0 + 0 * size.Height);
+
+            windows.Add(new CvWindow("Picture 2", WindowMode.KeepRatio));
+            windows[1].Resize(size.Width, size.Height);
+            windows[1].Move(screenWidth - 20 - 1 * size.Width, 0 + 0 * size.Height);
+
+            windows.Add(new CvWindow("Picture 3", WindowMode.KeepRatio));
+            windows[2].Resize(size.Width, size.Height);
+            windows[2].Move(screenWidth - 20 - 2 * size.Width, 33 + 1 * size.Height);
+
+            windows.Add(new CvWindow("Picture 4", WindowMode.KeepRatio));
+            windows[3].Resize(size.Width, size.Height);
+            windows[3].Move(screenWidth - 20 - 1 * size.Width, 33 + 1 * size.Height);
+
+            windows.Add(new CvWindow("Picture 5", WindowMode.KeepRatio));
+            windows[4].Resize(size.Width, size.Height);
+            windows[4].Move(screenWidth - 20 - 2 * size.Width, 66 + 2 * size.Height);
+
+            windows.Add(new CvWindow("Picture 6", WindowMode.KeepRatio));
+            windows[5].Resize(size.Width, size.Height);
+            windows[5].Move(screenWidth - 20 - 1 * size.Width, 66 + 2 * size.Height);
         }
 
         /// <summary>
@@ -257,45 +383,18 @@ namespace ShapeFromShading
             counter++;
 
             // capture new frame
-            frame1 = capture.QueryFrame();
+            cameraFrame = capture.QueryFrame();
 
-            // show image on the separate window
-            window1.Image = frame1;
-            window2.Image = frame2;
+            // show th one camera frames
+            cameraWindow.Image = cameraFrame;
+        }
 
-            // apply some variations to the image (brightness, salt-and-pepper, ...)
-            if (isReady)
-            {
-                IplImage image1;
-                IplImage image2;
+        /// <summary>
+        /// The variational approach to shape-from-shading.
+        /// </summary>
+        private void VariationalApproach()
+        {
 
-                // check if to use gray-scale or not
-                if (IsGrayScale)
-                {
-                    // convert to grayscale image
-                    Cv.CvtColor(frame1, grayFrame1, ColorConversion.BgrToGray);
-                    Cv.CvtColor(frame2, grayFrame2, ColorConversion.BgrToGray);
-                    image1 = grayFrame1;
-                    image2 = grayFrame2;
-                }
-                else
-                {
-                    image1 = frame1;
-                    image2 = frame2;
-                }
-
-                // check if to use gaussian smooth
-                if (GaussianSmooth > 0)
-                {
-                    int gaussianValue = (GaussianSmooth % 2 == 0) ? GaussianSmooth - 1 : GaussianSmooth;
-                    Cv.Smooth(image1, image1, SmoothType.Gaussian, gaussianValue);
-                }
-
-                // apply the matching
-                // transformedFrame = Matching(image1, image2, FeatureExtractor);
-
-                window3.Image = image2;
-            }
         }
 
         #endregion
