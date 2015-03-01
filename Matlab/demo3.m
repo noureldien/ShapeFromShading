@@ -22,15 +22,22 @@ imageCount = 9;
 imageHeight = 512;
 imageWidth = 512;
 
-shape = shapeFromShading(lights, imageLocation,imageExtension,...
-    imageName, imageCount, imageHeight, imageWidth);
-figure(3); clf;
-mesh(shape);
+[shape, map, map_smooth] = shapeFromShading(lights, imageLocation,imageExtension,...
+    imageName, imageCount, imageHeight, imageWidth, false);
 
-figure(4); clf;
-surf(shape,'EdgeColor','none','FaceColor','red');
-camlight headlight;
-lighting phong;
+% figure(3); clf;
+% mesh(shape);
+% 
+% figure(4); clf;
+% surf(shape,'EdgeColor','none','FaceColor','red');
+% camlight headlight;
+% lighting phong;
+
+figure(1); clf;
+mesh(map_smooth);
+
+figure(2); clf;
+imshow(map);
 
 
 

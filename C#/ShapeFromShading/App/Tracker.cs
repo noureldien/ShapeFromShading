@@ -42,7 +42,7 @@ namespace ShapeFromShading
 
         #region Private Variables
 
-        private readonly int deviceID = 0;
+        private readonly int deviceID = 1;
         private readonly int screenHeight = System.Windows.Forms.SystemInformation.VirtualScreen.Height;
         private readonly int screenWidth = System.Windows.Forms.SystemInformation.VirtualScreen.Width;
 

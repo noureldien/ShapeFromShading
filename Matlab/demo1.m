@@ -15,18 +15,25 @@ imageLocation = 'Images\';
 imageExtension = '.jpg';
 imageName = 'person';
 imageCount = 5;
-imageHeight = 512;
-imageWidth = 512;
+imageHeight = 240;
+imageWidth = 320;
 
-shape = shapeFromShading(lights, imageLocation,imageExtension,...
-    imageName, imageCount, imageHeight, imageWidth);
+[shape, map, map_smooth] = shapeFromShading(lights, imageLocation,imageExtension,...
+    imageName, imageCount, imageHeight, imageWidth, true);
+
+%figure(1); clf;
+%mesh(shape);
+
 figure(1); clf;
-mesh(shape);
-
-figure(2); clf;
 surf(shape,'EdgeColor','none','FaceColor','red');
 camlight headlight;
 lighting phong;
+
+figure(2); clf;
+mesh(map_smooth);
+
+figure(3); clf;
+imshow(map);
 
 
 
