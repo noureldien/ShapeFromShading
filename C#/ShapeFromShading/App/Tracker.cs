@@ -61,6 +61,7 @@ namespace ShapeFromShading
         private List<CvWindow> windows;
         private CvSize size;
         private bool isConstructing;
+        bool isVerticalApporachBusy;
 
         #endregion
 
@@ -180,10 +181,10 @@ namespace ShapeFromShading
         /// </summary>
         public void ConstructImage()
         {
-            string location = @"D:\Education\MSc - Southampton\Semester 2\6206 Advanced Computer Vision\Coursework\Task 3\Matlab\Images";
+            string location = @"..\..\..\..\Matlab\Images";
             for (int i = 0; i < 6; i++)
             {
-                images[i].SaveImage(System.IO.Path.Combine(location, string.Format("image{0}.jpg", (i + 1))));
+                images[i].SaveImage(System.IO.Path.Combine(location, string.Format("person{0}.jpg", (i + 1))));
             }
 
             return;
@@ -387,14 +388,148 @@ namespace ShapeFromShading
 
             // show th one camera frames
             cameraWindow.Image = cameraFrame;
+
+            //if (!isVerticalApporachBusy)
+            //{
+            //    windows[1].Image = VariationalApproach(cameraFrame, 100, 0.4);
+            //}
         }
 
         /// <summary>
         /// The variational approach to shape-from-shading.
         /// </summary>
-        private void VariationalApproach()
+        private IplImage VariationalApproach(IplImage image, int iterations, double lambda)
         {
+            isVerticalApporachBusy = true;
 
+            IplImage grayScale_ = new IplImage(image.Width, image.Height, BitDepth.U8, 1);
+
+            // convert to grayscale
+            Cv.CvtColor(image, grayScale_, ColorConversion.BgrToGray);
+            IplImage grayScale = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            Cv.Convert(grayScale_, grayScale);
+
+            // normalize image
+            Cv.Normalize(grayScale, grayScale);
+
+            // multibly by the filter
+            float[,] arrayX = new float[1, 3];
+            float[,] arrayY = new float[3, 1];
+            arrayX[0, 0] = arrayY[0, 0] = -1;
+            arrayX[0, 1] = arrayY[1, 0] = 0;
+            arrayX[0, 2] = arrayY[2, 0] = 1;
+            CvMat kernelX = CvMat.FromArray(arrayX);
+            CvMat kernelY = CvMat.FromArray(arrayY);
+            IplImage zX = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage zY = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            Cv.Filter2D(grayScale, zX, kernelX);
+            Cv.Filter2D(grayScale, zY, kernelY);
+            zX *= 0.5;
+            zY *= 0.5;
+            double maxX = 0; double minX = 0; double maxY = 0; double minY = 0;
+
+            // get max values
+            Cv2.MinMaxIdx(new Mat(zX), out minX, out maxX);
+            Cv2.MinMaxIdx(new Mat(zY), out minY, out maxY);
+
+            IplImage gt = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage ft = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage r = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage fs = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage gs = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            for (int y = 0; y < image.Height; y++)
+            {
+                for (int x = 0; x < image.Width; x++)
+                {
+                    ft[y, x] = 0;
+                    if (zX[y, x] >= 0.5 * maxX)
+                    {
+                        ft[y, x] = -2;
+                    }
+                    else if (zX[y, x] < 0.5 * minX)
+                    {
+                        ft[y, x] = 2;
+                    }
+
+                    gt[y, x] = 0;
+                    if (zX[y, x] >= 0.5 * maxY)
+                    {
+                        gt[y, x] = -2;
+                    }
+                    else if (zX[y, x] < 0.5 * minY)
+                    {
+                        gt[y, x] = 2;
+                    }
+
+                    r[y, x] = Math.Pow(ft[y, x].Val0, 2) + Math.Pow(gt[y, x].Val0, 2);
+                    if (r[y, x] == 4)
+                    {
+                        fs[y, x] = ft[y, x];
+                        gs[y, x] = gt[y, x];
+                    }
+                }
+            }
+
+            float[,] array = new float[3, 3];
+            array[0, 0] = array[0, 1] = array[0, 2] = 1;
+            array[1, 0] = array[1, 2] = 1;
+            array[1, 1] = 0;
+            array[2, 0] = array[2, 1] = array[2, 2] = 1;
+            CvMat kernel = CvMat.FromArray(array);
+            kernel = (1 / 8) * kernel;
+            IplImage depth = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage fs2 = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage gs2 = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage ones = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage rNorm = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage fMid = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage gMid = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage diff = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage f = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            IplImage g = new IplImage(image.Width, image.Height, BitDepth.F32, 1);
+            ones.Set(Scalar.FromRgb(1, 1, 1));
+
+            for (int i = 0; i < iterations; i++)
+            {
+                Cv.Mul(fs, fs, fs2);
+                Cv.Mul(gs, gs, gs2);
+
+                Cv.Div((-fs2 - gs2 + 4), (fs2 + gs2 + 4), depth);
+                Cv.Div(ones, (fs2 + gs2 + 4), rNorm);
+
+                Cv.Filter2D(fs, fMid, kernel);
+                Cv.Filter2D(gs, gMid, kernel);
+
+                diff = grayScale - depth;
+               
+                Cv.Mul(fs, rNorm, f);
+                Cv.Mul(f, diff, f);
+                f = f * (1 / lambda);
+
+                Cv.Mul(gs, rNorm, g);
+                Cv.Mul(g, diff, g);
+                f = f * (1 / lambda);
+
+                for (int y = 0; y < image.Height; y++)
+                {
+                    for (int x = 0; x < image.Width; x++)
+                    {
+                        if (ft[y, x] == 0)
+                        {
+                            fs[y, x] = fMid[y, x] - f[y, x];
+                        }
+
+                        if (gt[y, x] == 0)
+                        {
+                            gs[y, x] = gMid[y, x] - g[y, x];
+                        }
+                    }
+                }
+            }
+
+            isVerticalApporachBusy = false;
+
+            return depth;
         }
 
         #endregion

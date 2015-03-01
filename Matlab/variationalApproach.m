@@ -25,19 +25,21 @@ fs(y~=4) = 0;
 gs(y~=4) = 0;
 
 kernel = (1/8) * [1 1 1; 1 0 1; 1 1 1];
-
 for i = 1 : iternations
-    depth = (-fs.^2 - gs.^2 + 4) ./ (fs.^2 + gs.^2 + 4);
-    rnorm = 1./( fs.^2 + gs.^2 + 4 ).^2;
+    s = fs.^2 + gs.^2;
+    depth = (-s  + 4) ./ (s + 4);
+    rnorm = 1./(s + 4 ).^2;
     fmid = imfilter(fs, kernel);
     diff = double(Z) - depth;
     f = (1/lambda) * fs.* rnorm .* diff;
     % fs = fsmooth + fdata;
-    fs(ft==0) = fmid(ft==0) - f(ft==0);
+    s = ft==0;
+    fs(s) = fmid(s) - f(s);
     gmid = imfilter(gs, kernel);
     g = (1/lambda) * gs .* rnorm .* diff;
     % gs = gsmooth + gdata;
-    gs(gt == 0) = gmid(gt == 0) - g(gt == 0);
+    s = gt==0;
+    gs(s) = gmid(s) - g(s);
 end
 
 end

@@ -1,6 +1,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Shape from shade
-% using camels with 5 images (4 light source)
+% using a person with 5 images (4 light source)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 clc;
@@ -13,7 +13,7 @@ lights=[0 0 40;
 
 imageLocation = 'Images\';
 imageExtension = '.jpg';
-imageName = 'camel';
+imageName = 'person';
 imageCount = 5;
 imageHeight = 512;
 imageWidth = 512;
@@ -27,3 +27,11 @@ figure(2); clf;
 surf(shape,'EdgeColor','none','FaceColor','red');
 camlight headlight;
 lighting phong;
+
+
+
+
+
+
+
+

@@ -113,6 +113,28 @@ namespace ShapeFromShading
 
         }
 
+        /// <summary>
+        /// Event handler for voice recognition. Called when a new voice is recognized.
+        /// </summary>
+        private void Rec_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
+        {
+            if (e.Result.Confidence < 0.9)
+            {
+                return;
+            }
+
+            string resultText = e.Result.Text;
+            int index = Array.IndexOf(numbers, resultText);
+            if (index > -1)
+            {
+                tracker.TakeSnapshot(index);
+            }
+            else if (this.IsTextEqual(resultText, "Save"))
+            {
+                tracker.ConstructImage();
+            }
+        }
+
         #endregion
 
         #region Private Methods
@@ -123,14 +145,14 @@ namespace ShapeFromShading
         private void Initialize()
         {
             numbers = new string[] { "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten" };
-                        
+
             // initialize camera object
             tracker = new Tracker(labelFrameCounter);
             tracker.StartCamera();
 
             // initialize speech recogintion
             InitializeSpeechRecognition();
-            
+
             // start speech recognition
             speechRecEngine.RecognizeAsync(RecognizeMode.Multiple);
         }
@@ -147,7 +169,7 @@ namespace ShapeFromShading
             // Train the system to recognize these sentences            
             Choices c = new Choices();
             c.Add(numbers);
-            c.Add("Process");
+            c.Add("Save");
 
             var grammarBuilder = new GrammarBuilder(c);
             Grammar grammar = new Grammar(grammarBuilder);
@@ -158,31 +180,16 @@ namespace ShapeFromShading
         }
 
         /// <summary>
-        /// Event handler for voice recognition. Called when a new voice is recognized.
-        /// </summary>        
-        private void Rec_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
-        {   
-            if (e.Result.Confidence < 0.935)
-            {
-                return;
-            }
-
-            string resultText = e.Result.Text;
-            int index = Array.IndexOf(numbers, resultText);
-            if (index > -1)
-            {
-                tracker.TakeSnapshot(index);
-            }
-            else if (this.IsEqualText(resultText, "Process"))
-            {
-                tracker.ConstructImage();
-            }
-        }
-
-        private bool IsEqualText(string text1, string text2)
+        /// Are the given texts equal.
+        /// </summary>
+        /// <param name="text1"></param>
+        /// <param name="text2"></param>
+        /// <returns></returns>
+        private bool IsTextEqual(string text1, string text2)
         {
             return string.Compare(text1, text2, true) == 0;
         }
+
         #endregion
     }
 }
